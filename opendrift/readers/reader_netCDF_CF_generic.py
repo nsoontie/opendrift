@@ -99,7 +99,7 @@ class Reader(BaseReader):
                     self.Dataset = xr.open_mfdataset(filename,
                                                      data_vars='minimal',
                                                      coords='minimal',
-                                                     combine='nested')
+                                                     combine='by_coords')
                 else:
                     self.Dataset = MFDataset(filename)
             else:
