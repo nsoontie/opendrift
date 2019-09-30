@@ -21,6 +21,7 @@
 #####################################
 
 import logging
+from datetime import datetime
 
 import numpy as np
 from netCDF4 import Dataset, MFDataset, num2date
@@ -28,6 +29,12 @@ from scipy.interpolate import LinearNDInterpolator
 
 from opendrift.readers.basereader import BaseReader, pyproj
 
+try:
+    import xarray as xr
+    has_xarray = True
+except:
+    has_xarray = False
+    
 
 class Reader(BaseReader):
 
@@ -67,10 +74,29 @@ class Reader(BaseReader):
             logging.info('Opening dataset: ' + filestr)
             if ('*' in filestr) or ('?' in filestr) or ('[' in filestr):
                 logging.info('Opening files with MFDataset')
-                self.Dataset = MFDataset(filename)
+                if has_xarray:
+                    try:
+                        self.Dataset = \
+                            xr.open_mfdataset(filename,
+                                              concat_dim='time_counter',
+                                              data_vars='minimal',
+                                              coords='minimal',
+                                              combine='nested')
+                    except:
+                        self.Dataset = \
+                            xr.open_mfdataset(filename,
+                                              concat_dim='time',
+                                              data_vars='minimal',
+                                              coords='minimal',
+                                              combine='nested')
+                else:
+                    self.Dataset = MFDataset(filename)
             else:
                 logging.info('Opening file with Dataset')
-                self.Dataset = Dataset(filename, 'r')
+                if has_xarray:
+                    self.Dataset = xr.open_dataset(filename)
+                else:
+                    self.Dataset = Dataset(filename, 'r')
         except Exception as e:
             raise ValueError(e)
 
@@ -84,22 +110,27 @@ class Reader(BaseReader):
             var = self.Dataset.variables[var_name]
             if var.ndim > 1:
                 continue  # Coordinates must be 1D-array
-            attributes = var.ncattrs()
+            if has_xarray:
+                attributes = var.attrs
+                att_dict = var.attrs
+            else:
+                attributes = var.ncattrs()
+                att_dict = var.__dict__
             standard_name = ''
             long_name = ''
             axis = ''
             units = ''
             CoordinateAxisType = ''
             if 'standard_name' in attributes:
-                standard_name = var.__dict__['standard_name']
+                standard_name = att_dict['standard_name']
             if 'long_name' in attributes:
-                long_name = var.__dict__['long_name']
+                long_name = att_dict['long_name']
             if 'axis' in attributes:
-                axis = var.__dict__['axis']
+                axis = att_dict['axis']
             if 'units' in attributes:
-                units = var.__dict__['units']
+                units = att_dict['units']
             if '_CoordinateAxisType' in attributes:
-                CoordinateAxisType = var.__dict__['_CoordinateAxisType']
+                CoordinateAxisType = att_dict['_CoordinateAxisType']
             if standard_name == 'longitude' or \
                     long_name == 'longitude' or \
                     var_name == 'longitude' or \
@@ -112,9 +143,13 @@ class Reader(BaseReader):
                     unitfactor = 1000
                 else:
                     unitfactor = 1
-                x = var[:]*unitfactor
+                if has_xarray:
+                    var_data = var.values
+                else:
+                    var_data = var[:]
+                x = var_data*unitfactor
                 self.unitfactor = unitfactor
-                self.numx = var.shape[0]
+                self.numx = var_data.shape[0]
             if standard_name == 'latitude' or \
                     long_name == 'latitude' or \
                     var_name == 'latitude' or \
@@ -127,19 +162,36 @@ class Reader(BaseReader):
                     unitfactor = 1000
                 else:
                     unitfactor = 1
-                y = var[:]*unitfactor
-                self.numy = var.shape[0]
+                if has_xarray:
+                    var_data = var.values
+                else:
+                    var_data = var[:]
+                y = var_data*unitfactor
+                self.numy = var_data.shape[0]
             if standard_name == 'depth' or axis == 'Z':
+                if has_xarray:
+                    var_data = var.values
+                else:
+                    var_data = var[:]
                 if 'positive' not in var.ncattrs() or \
                         var.__dict__['positive'] == 'up':
-                    self.z = var[:]
+                    self.z = var_data
                 else:
-                    self.z = -var[:]
+                    self.z = -var_data
             if standard_name == 'time' or axis == 'T' or var_name == 'time':
                 # Read and store time coverage (of this particular file)
-                time = var[:]
+                if has_xarray:
+                    var_data = var.values
+                else:
+                    var_data = var[:]
+                time = var_data
                 time_units = units
-                self.times = num2date(time, time_units)
+                if has_xarray:
+                    self.times = [datetime.utcfromtimestamp((OT -
+                        np.datetime64('1970-01-01T00:00:00Z')
+                            ) / np.timedelta64(1, 's')) for OT in time]
+                else:
+                    self.times = num2date(time, time_units)
                 self.start_time = self.times[0]
                 self.end_time = self.times[-1]
                 if len(self.times) > 1:
@@ -161,9 +213,14 @@ class Reader(BaseReader):
             if var_name in [self.xname, self.yname, 'depth']:
                 continue  # Skip coordinate variables
             var = self.Dataset.variables[var_name]
-            attributes = var.ncattrs()
+            if has_xarray:
+                attributes = var.attrs
+                att_dict = var.attrs
+            else:
+                attributes = var.ncattrs()
+                att_dict = var.__dict__
             if 'standard_name' in attributes:
-                standard_name = str(var.__dict__['standard_name'])
+                standard_name = str(att_dict['standard_name'])
                 if standard_name in variable_aliases:  # Mapping if needed
                     standard_name = variable_aliases[standard_name]
                 self.variable_mapping[standard_name] = str(var_name)
@@ -171,7 +228,7 @@ class Reader(BaseReader):
                 self.variable_mapping[fvcom_mapping[var_name]] = \
                     str(var_name)
 
-        self.variables = self.variable_mapping.keys()
+        self.variables = list(self.variable_mapping.keys())
 
         self.xmin = self.lon.min()
         self.xmax = self.lon.max()
