@@ -290,7 +290,8 @@ class Reader(BaseReader):
             else:
                 raise ValueError('Wrong dimension of %s: %i' %
                                  (var_name, var.ndim))
-
+            if has_xarray:
+                data = np.asarray(data)
             if 'interpolator' not in locals():
                 logging.debug('Making interpolator...')
                 interpolator = LinearNDInterpolator((self.lat[c],
