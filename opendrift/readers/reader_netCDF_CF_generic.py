@@ -49,10 +49,6 @@ def proj_from_CF_dict(c):
                    'straight_vertical_longitude_from_pole']:
             if l0 in c:
                 lon_0 = c[l0]
-        if 'latitude_of_origin' in c:
-            lat_ts = c['latitude_of_origin']
-        else:
-            lat_ts = c['latitude_of_projection_origin']
         if 'false_easting' in c:
             x0 = c['false_easting']
         else:
@@ -65,11 +61,11 @@ def proj_from_CF_dict(c):
             k0 = c['scale_factor_at_projection_origin']
         else:
             k0 = 1.0
-        proj4 = ('+proj={!s} +lat_0={!s} +lon_0={!s} +lat_ts={!s}'
+        proj4 = ('+proj={!s} +lat_0={!s} +lon_0={!s} '
                  '+k_0={!s} +x_0={!s} +y_0={!s} +units=m +a={!s} '
                  '+no_defs'.format('stere',
                                    c['latitude_of_projection_origin'],
-                                   lon_0, lat_ts, k0, x0, y0, earth_radius)
+                                   lon_0, k0, x0, y0, earth_radius)
                  )
 
     proj = pyproj.Proj(proj4)
