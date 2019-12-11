@@ -417,6 +417,17 @@ class Reader(BaseReader):
             var = self.Dataset.variables[self.variable_mapping[par]]
 
             ensemble_dim = None
+            if par == 'land_binary_mask':
+                if not hasattr(self, 'land_binary_mask'):
+                    # Store landmask for later use
+                    if has_xarray:
+                        self.land_binary_mask = np.asarray(var.values)
+                    else:
+                        self.land_binary_mask = np.asarray(var[:])
+                if has_xarray:
+                    variables[par] = np.asarray(var.values)
+                else:
+                    variables[par] = np.asarray(var[:])
             if continous is True:
                 if var.ndim == 2:
                     variables[par] = var[indy, indx]

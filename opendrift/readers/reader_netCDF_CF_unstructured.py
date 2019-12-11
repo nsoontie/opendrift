@@ -281,7 +281,12 @@ class Reader(BaseReader):
         # Reader coordinates of subset
         for par in requested_variables:
             var = self.Dataset.variables[self.variable_mapping[par]]
-            if var.ndim == 1:
+            if par == 'land_binary_mask':
+                if not hasattr(self, 'land_binary_mask'):
+                    # Store landmask for later use
+                    self.land_binary_mask = np.asarray(var[:])
+                data = var[:]
+            elif var.ndim == 1:
                 data = var[c]
             elif var.ndim == 2:
                 data = var[indxTime,c]
@@ -294,9 +299,14 @@ class Reader(BaseReader):
                 data = np.asarray(data)
             if 'interpolator' not in locals():
                 logging.debug('Making interpolator...')
-                interpolator = LinearNDInterpolator((self.lat[c],
-                                                     self.lon[c]),
-                                                    data)
+                if par == 'land_binary_mask':
+                    interpolator = LinearNDInterpolator((self.lat,
+                                                         self.lon),
+                                                        data)
+                else:
+                    interpolator = LinearNDInterpolator((self.lat[c],
+                                                         self.lon[c]),
+                                                        data)
             else:
                 # Re-use interpolator for other variables
                 interpolator.values[:,0] = data
