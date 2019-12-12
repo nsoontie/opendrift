@@ -26,7 +26,7 @@ from datetime import datetime
 
 import numpy as np
 from netCDF4 import Dataset, MFDataset, num2date
-from scipy.interpolate import LinearNDInterpolator, Nearest2DInterpolator
+from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 
 from opendrift.readers.basereader import BaseReader, pyproj
 
