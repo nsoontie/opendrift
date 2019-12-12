@@ -18,6 +18,7 @@
 # NOTE:
 # This reader is under development,
 # and presently not fully functional
+# This reader is designed for 2D irregular grids
 #####################################
 
 import logging
@@ -25,7 +26,7 @@ from datetime import datetime
 
 import numpy as np
 from netCDF4 import Dataset, MFDataset, num2date
-from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+from scipy.interpolate import LinearNDInterpolator, Nearest2DInterpolator
 
 from opendrift.readers.basereader import BaseReader, pyproj
 
@@ -53,19 +54,11 @@ class Reader(BaseReader):
         self.latstep = latstep
         self.lonstep = lonstep
 
-        # Due to misspelled standard_name in
-        # some (Akvaplan-NIVA) FVCOM files
+        # Due to different variables names
         variable_aliases = {
-            'eastward_sea_water_velocity': 'x_sea_water_velocity',
-            'Northward_sea_water_velocity': 'y_sea_water_velocity',
-            'eastward wind': 'x_wind',
-            'northward wind': 'y_wind'
+            'eastward_wind': 'x_wind',
+            'northward_wind': 'y_wind',
             }
-
-        # Mapping FVCOM variable names to CF standard_name
-        fvcom_mapping = {
-            'um': 'x_sea_water_velocity',
-            'vm': 'y_sea_water_velocity'}
 
         self.return_block = True
 
@@ -108,8 +101,8 @@ class Reader(BaseReader):
         # Find x, y and z coordinates
         for var_name in self.Dataset.variables:
             var = self.Dataset.variables[var_name]
-            if var.ndim > 1:
-                continue  # Coordinates must be 1D-array
+            #if var.ndim > 1:
+            #    continue  # Coordinates must be 1D-array
             if has_xarray:
                 attributes = var.attrs
                 att_dict = var.attrs
@@ -122,9 +115,9 @@ class Reader(BaseReader):
             units = ''
             CoordinateAxisType = ''
             if 'standard_name' in attributes:
-                standard_name = att_dict['standard_name']
+                standard_name = att_dict['standard_name'].lower()
             if 'long_name' in attributes:
-                long_name = att_dict['long_name']
+                long_name = att_dict['long_name'].lower()
             if 'axis' in attributes:
                 axis = att_dict['axis']
             if 'units' in attributes:
@@ -135,8 +128,7 @@ class Reader(BaseReader):
                     long_name == 'longitude' or \
                     var_name == 'longitude' or \
                     axis == 'X' or \
-                    CoordinateAxisType == 'Lon' or \
-                    standard_name == 'projection_x_coordinate':
+                    CoordinateAxisType == 'Lon':
                 self.xname = var_name
                 # Fix for units; should ideally use udunits package
                 if units == 'km':
@@ -147,6 +139,8 @@ class Reader(BaseReader):
                     var_data = var.values
                 else:
                     var_data = var[:]
+                if var_data.ndim > 1:
+                    var_data = var_data.flatten()
                 x = var_data*unitfactor
                 self.unitfactor = unitfactor
                 self.numx = var_data.shape[0]
@@ -154,8 +148,7 @@ class Reader(BaseReader):
                     long_name == 'latitude' or \
                     var_name == 'latitude' or \
                     axis == 'Y' or \
-                    CoordinateAxisType == 'Lat' or \
-                    standard_name == 'projection_y_coordinate':
+                    CoordinateAxisType == 'Lat':
                 self.yname = var_name
                 # Fix for units; should ideally use udunits package
                 if units == 'km':
@@ -166,6 +159,8 @@ class Reader(BaseReader):
                     var_data = var.values
                 else:
                     var_data = var[:]
+                if var_data.ndim > 1:
+                    var_data = var_data.flatten()
                 y = var_data*unitfactor
                 self.numy = var_data.shape[0]
             if standard_name == 'depth' or axis == 'Z':
@@ -204,6 +199,8 @@ class Reader(BaseReader):
         if 'y' not in locals():
             raise ValueError('Did not find y-coordinate variable')
 
+        # adjust to -180, 180
+        x[x>180] = x[x>180] - 360
         self.lon = x
         self.lat = y
 
@@ -224,9 +221,6 @@ class Reader(BaseReader):
                 if standard_name in variable_aliases:  # Mapping if needed
                     standard_name = variable_aliases[standard_name]
                 self.variable_mapping[standard_name] = str(var_name)
-            elif var_name in fvcom_mapping:
-                self.variable_mapping[fvcom_mapping[var_name]] = \
-                    str(var_name)
 
         self.variables = list(self.variable_mapping.keys())
 
@@ -280,18 +274,18 @@ class Reader(BaseReader):
 
         # Reader coordinates of subset
         for par in requested_variables:
-            var = self.Dataset.variables[self.variable_mapping[par]]
+            var = self.Dataset.variables[self.variable_mapping[par]] 
             if par == 'land_binary_mask':
                 if not hasattr(self, 'land_binary_mask'):
                     # Store landmask for later use
-                    self.land_binary_mask = np.asarray(var[:])
-                data = var[:]
-            elif var.ndim == 1:
-                data = var[c]
+                    self.land_binary_mask = np.asarray(var[:]).flatten()
+                data = np.asarray(var[:]).flatten()
             elif var.ndim == 2:
-                data = var[indxTime,c]
+                data = np.asarray(var).flatten()[c]
             elif var.ndim == 3:
-                data = var[indxTime,0,c]
+                data = np.asarray(var[indxTime,...]).flatten()[c]
+            elif var.ndim == 4:
+                data = np.asarray(var[indxTime,0,...]).flatten()[c]
             else:
                 raise ValueError('Wrong dimension of %s: %i' %
                                  (var_name, var.ndim))
