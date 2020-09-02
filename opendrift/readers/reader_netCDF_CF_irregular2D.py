@@ -166,9 +166,11 @@ class Reader(BaseReader):
             if standard_name == 'depth' or axis == 'Z':
                 if has_xarray:
                     var_data = var.values
+                    attrs = var.attrs
                 else:
                     var_data = var[:]
-                if 'positive' not in var.ncattrs() or \
+                    attrs = var.ncattrs()
+                if 'positive' not in attrs or \
                         var.__dict__['positive'] == 'up':
                     self.z = var_data
                 else:
